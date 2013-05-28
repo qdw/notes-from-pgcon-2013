@@ -1,0 +1,126 @@
+Hacking on PostgreSQL: add your feature to PG, by Stephen Frost (PGCon 2013)
+
+… I walked in at this point, having gotten bored in the logging talk.
+on to the code
+
+follow the mailing lists. don't duplicate functionality someone else is adding!
+
+write up a wiki page on your proposal.
+
+send it to the mailing list.
+
+then get down to hacking:
+
+src/backend/parser
+gram.y - grammar, a good place to start.
+scan.l - lexer. rarely need to change this.
+
+grammar example
+
+stmt = main
+    it's a production.
+    everything's a production.
+    productions are of the form regex or other regex or some other regex…
+looks like this:
+    
+stmt : this | that | whatever | CopyStmt
+
+CopyStmt: COPY opt_binary qualified_name opt_column_list … $n->relation
+
+(convention: CamelCase for top-level things, snake_case for reusable bits)
+
+guidelines:
+    update unreserved_keyword
+    avoid adding fully reserved keywords (kwlist.h) if at all possible
+
+    $$ = 'what this production yields'
+
+src/backend/commands/copy.c
+           /storage/file/fd.c
+   /include/parser/kwlist.h
+   /include/storage/fd.h
+   /sgml/ref/copy.sgml
+   /test/regress/input/copy.source
+   /test/regress/output/copy.source
+   
+    btw, it's ok to put structs in .c files (not .h)
+        because some things aren't public
+
+    update ProcessCopyOptions()
+
+    then hack the heck out of copy.c to implement the actual feature
+
+pg library guide
+    memory - palloc(). choose your context:
+        CurrentMemoryContext - the default, and usually what you want.
+        TopMemoryContext - lives as long as backend. Don't use!
+        Per-Query Context (important for set-returning functions, e.g.)
+        Per-Tuple Context
+
+    don't bother pfree()'ing explicitly. the garbage collector will do this
+    for you. — *unless* you're doing a btree comparison function.
+    those aren't allowed to leak. but GIN indexes use the child context
+    trick (cf. Andrew Dunstan, Tom Lane).
+
+    remember, if you alloc anything outside of pg (like a library),
+    you have to free it yourself.
+
+    logging - ereport() errcode() errmsg() - level and msg required
+        read the style guide!
+
+        if level is ERROR, pg will handle cleanup (xact, free(), etc.)
+
+    syscache - SearchSysCache() utils/cache/[l]?syscache.c
+
+    snapshot scanning
+        watch out. if you scan the whole heap, you'll see some tuples twice,
+        because of MVCC.
+            and the heap can change in other ways while you're scanning it.
+
+    nodes of expresssion trees
+        a node is a type and a blob. IsA() is for types
+        makeNode(TYPE) is for creating a node in the backend
+            there are convenience wrappers like makeInteger (macros?)
+                usually you can use those.
+                if you can't, then…
+            to add a node type, see src/include/nodes/nodes.h
+                 then implement a bunch of functions to copy, comapre, etc node
+
+    datums - postgres.h - lots of helper macros here
+        e.g., Datum Int32GetDatum(int)
+              int DatumGetInt32(Datum)
+
+    tuples - include/access/htup.h - HeapTupleData struct (in-memory)
+        consists of length of typle, pointer to header, bitmap of NULLS, data…
+
+        kinds
+            pointer to disk buffer
+                make sure you pin() these! Otherwise they'll get evicted.
+            empty
+            simple pmalloc()'ed chunk
+            separately allocated (ugh)
+            minimal tuple structure
+
+        never access structs using pointer offset tricks;
+        use the macros.
+        if you write structs, provide macros!
+
+    TOAST - large values are compressed and stored out of line in a TOAST table
+        try to avoid de-TOASTING things.
+
+    misc - linked lists, jillions of other libraries.
+        don't reinvent the wheel.
+        but if you do write your own wheel, put it somewhere global
+             for others to reuse.
+
+    read the code style guide in the FAQ
+        copious comments - always explain why, not what or how, you do stuff.
+            /* C-style */
+            own lines or blocks
+
+    patches - use git-diff or context diffs. latter is slightly preferred.
+        email hackers@
+        write a description of what your patch does and why, staritng 
+        regression tests.
+        doc updates.
+        pg_dump support.

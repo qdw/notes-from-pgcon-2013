@@ -1,0 +1,68 @@
+PostgreSQL Concurrency, by Kevin Grittner (PGCon 2013)
+
+- one radical fix:
+make all your xacts SERIALIZABLE
+if an xact fails, check for SQLSTATE 40012 40P01 (latter indicates deadlock)
+  that just means it couldn't run b/c another SERIALIZABLE xact got in the way
+  so auto-retry
+
+- a very quick fix:
+just crank down deadlock_timeout
+  
+- another good trick:
+flag xacts as READ ONLY if you know they are
+
+- other xact isolation levels:
+    - READ COMMITTED  -- the default. Takes a new MVCC snapshot
+                      -- for each statement within the transaction.
+      This is a problem for ORMs. They want to SELECT data, manipulate it
+      on the client side, and then UPDATE it.
+
+          - Solution: SELECT … FOR UPDATE -- invokes READ COMMITTED mode
+                    
+    - REPEATABLE READ -- fails if anyone changes the data you're looking at
+                      -- at any time during your xact
+
+- another trick: UPDATE … RETURNING -- tells you what you set the value to,
+                                    -- but that's not necessarily what
+                                    -- ends up in the DB, as there can be
+                                    -- subsequent xacts.
+
+- nasty results
+  - deadlock: pg detects it, returns 40P01
+
+  - write skew: xact A reads  x and writes y
+                xact B writes x and reads y
+
+                so B can't see data that weren't part of its original snapshot
+                (cf. his bank-scamming example)
+      - solution: "materialize the conflict" by ensuring there's a row
+        that both xacts must update. Then both MVCC states see it.
+
+      - solution: LOCK TABLE
+            - kills concurrency
+            - OTOH, cuts down on the need for disk access
+
+- rules of thumb
+  - consider how "optimistic" your appproach is.
+    SERIALIZABLE the most optimistic: it assumes there won't be conflicts.
+
+  - REPEATABLE READ is better than READ COMMITTED if you have
+    many statements per xact and little chance of conflicts.
+
+  - benchmark: DBT-2 < TPC-C
+    SERIALABLE was 2% slower than REPEATABLE READ
+
+- SEE ALSO
+
+  - MVCC 101:
+    http://postgresql.org/docs/current/interactive/mvcc.html
+
+  - Concurrency 101:
+    http://postgresql.org/files/developer/concurrency.pdf
+
+  - Isolation 101 (wiki):
+    http://postgresl.org/wiki/SSI
+
+  - implementation details, benchmarks for SERIALIZABLE, specifically (slides):
+    http://vldb.org/pvldb/vol5/p1850_danrkports_vldb2012.pdf

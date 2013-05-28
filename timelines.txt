@@ -1,0 +1,68 @@
+Understanding PostgreSQL timelines, by Heikki, VMWare (PGCon 2013)
+
+first, pitr
+    every pitr restore creates a new timeline
+    
+    pg gives each timeline a unique ID
+    A/15000000
+    A/20000000
+    a single server sees only the "active" timeline
+    i.e., look back from a given point in time, and history always seems linear
+
+    recovery ends when you stop replaying and start accepting writes
+    at the end, it chooses a new timeline id
+        based on scanning the WAL dir and seeing which ids are used already
+    then it writes the timeline history file
+
+    the first WAL file of the new timeline
+    is the same as the last WAL file of the old timeline
+    but with a different name
+
+    pg_xlog/$id.history
+
+    1 13/E4000000 n reovetry target specificed
+    2 13/ED000090 at restore point "some comment"
+
+    ^ first col is the timeline id of the *parent* timeline
+
+    this file is just here for your information.
+
+*backup* history file is something different
+(backup *label* file is something different still: PGDATA/backup_label)
+
+so, again:
+    backup label file: needed by system. important. don't touch. human-readable
+    backup history file: fyi only
+    timeline history file: needed for recovery. important.
+
+timelines are important because the master can take writes *after* recovery
+  starts.
+
+    synchronous replication is no exception.
+    
+    commits are still written to disk on the master
+    before bering written on the replica.
+
+    even if you don't lose commits, WAL records aren't synchronous
+    — that would totally kill performance
+
+9.3 enhancements (largely thanks to Heikki!)
+    now streaming replication can follow a timeline switch
+    (before, you needed a WAL archive in order to make the switch)
+
+    pg_receivexlog too can follow a timeline switch
+
+    this meant adding to the protocol to support
+      fetching the history files
+      so now the replica knows about ALL the TIMELINES
+
+    works for cascading replication too
+
+    yay!
+
+trick: during recovery use rsync to do the equivalent of a base backup
+but Heikki's working on a better way:
+pg_rewind
+    one nice thing: doesn't require shell access
+    only postgres SUPERUSER access
+

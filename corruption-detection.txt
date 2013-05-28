@@ -1,0 +1,72 @@
+Corruption Detection and Repair, by Jeff Davis (PGCon 2013)
+** TODO:
+* get pg_filedump. install it everywhere you run servers.
+* follow http://wiki.postgresql.org/wiki/Corruption_Detection_and_Containment
+
+ERROR: invalid page header in
+   blah blah blah
+
+problem: you get a bad block
+1. find out what failed
+   hardware?
+   firmware?
+   fs?
+   pg?
+   backup/replication policy?
+   …
+
+detection at the fs level is nice
+copy-on-write fs'es do this:
+    zfs does
+    butrfs does too, but who runs DBs on butrfs?
+    if you're on a different fs, you're out of luck
+non-copy-on-write fs'es can, but get false positives or performance problems
+butrfs and zfs are bad for DBs, usually
+    locality gets shot; seq scans don't work.
+caveat: these fs'es don't check the in-memory cache for corruption
+
+anyway…
+
+goals: detect corruption early, before it can get into the replica or backup
+
+detection
+    page header check built into pg (must monitor for these!)
+    9.3 has checksums as well, and keeps corruption out of the executor
+        these are basically a better page header check
+            works even if you move the block to a new location (transposition)
+    9.3: to get checksums, must dump/restore — pg_upgrade won't do.
+    pg_filedump | grep Error # pretty much the only way short of a hex editor
+        better than the page header check
+        run on files, offline
+
+propagation
+    if corruption hits the executor, you get a mysterious crash (bad)
+    or wrong results (much worse, of course). again, 9.3 is nearly immune
+    to that.
+
+propagation… to backups
+    the only countermeasures:
+        - validate your backups using pg_filedump, or
+        - use streaming replication
+          - this catches any corruption that happens in the wAL logs.
+          - but it doesn't catch corruption in the base
+            - … and if you resync, you're implicitly doing a base backup
+          - special case: sometimes SR has to fetch a page that's already been
+            written to disk and stream it (because it fell behind, and
+            that page got written). This makes it *more* likely to detect
+            corruption, not less so. WAL logs are checksummed, and
+            have been for many pg versions. 
+
+what about full page writes?
+    usually the master needs to read. if you're on 9.3, then checksums
+    will catch the problem.
+
+remember to check both master and replica. Corruption can happen either place!
+
+audience tip: a VACUUM is one way to force a scan of your whole DB
+
+recovery
+    fail over to a good replica
+    restore from a good backup
+    … or, if corruption propagated… you probably will lose data.
+

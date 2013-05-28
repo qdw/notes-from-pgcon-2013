@@ -1,0 +1,10 @@
+Using logging hooks for real-time analysis, by Peter Eisentraut (PGCon 2013)
+peter@eisentraut.org @petereisentraut
+
+9.2 introduced logging_hooks
+    by Martin Pihlak of Skype
+
+    super-simple API: just one function pointer
+        check out his reference implementation, pg_logforward
+
+This talk was too slow, so I jumped ship for the hacking track.

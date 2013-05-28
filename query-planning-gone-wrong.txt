@@ -1,0 +1,88 @@
+Query Planning Gone Wrong, by Robert Haas (PGCon 2013)
+
+based on reading list traffic, instances of problems were caused by
+    23: settings
+    23: [unreasonable expectations, e.g. returning 10M rows]
+    22: pg is bad for the use case in question. other RDBMSs are better.
+ ** 83 (= 50%): planner error
+                     (not bugs, just the optimizer chose a bad plan)
+    14: bugs (mostly the planner, sometimes the Linux kernel).
+     3: user error
+
+settings
+    planner cost constants: must turn down (usually b/c whole DB is in memory)
+        seq_page_cost
+        random_page_cost
+        cpu_table_cost -- really? Kevin Britner thinks so; Robert is unsure.
+            Kevin: half the time it helped; half the time it didn't.
+
+        it would be nice if these were adjustable per-table, but they're not.
+        they are adjustable *per-tablespace*, though, thanks to Robert.
+        but he doesn't know anyone who's using it!
+
+    just plain slow
+        clauses involving multiple tables can't be pushed down
+            (because a JOIN must happen first and return each row)
+        …
+        … OK, cf. the slides
+
+                
+    "we're bad at that."
+        plan types we can't generate:
+            parameterized paths (7: 5 pre-9.2, 2 post-9.2)
+        merge append (3): fixed in 9.1. i.e., for LIMIT clauses, use index.
+        batched sort of data already ordered by leading columns
+            if it's already ordered, we should take advantage of that.
+            * but we don't, yet.
+        executor limitations
+            indexing unordered data causes random I/O
+            M< is not indexable
+            DISTINCT + HashAggregate reads all input before emitting any result
+        redundant UPDATEs are expensive
+        AFTER trigger queue: 
+        should analyse inheritance structure
+        josh: long IN lists are slow. well… yeah. we *could* fix this.
+        parallel query, of course
+
+    planner error. :(
+        top problem: 'SELECT * FROM foo WHERE a=1 ORDER BY b LIMIT n'
+            which is better: scan for a then filter by b, or vice versa?
+            the planner always prefers to scan by b, then filter by a.
+            you can create a composite index to fake the planner into using it.
+        
+        28 conceptual errors: planner couldn't "imagine" the right plan.
+                              but phrasing the SQL differently does the trick.
+        55 estimation errors
+            48 row count estimation
+            17 cost estimation
+        correlated statistics (column correlation worst; row correlation bad)
+            planner assumes the columns are independent, and multiplies
+            the probabilities. if they're correlated, this is invalid!
+
+        the preceding errors accounted for 50% of problems. for the remainder,
+        see the slides.
+
+        well, ok, here are a few more:
+
+        WITH is a black box to the planner, often.
+
+        generic plans have problems when executed with different
+        placeholder values. Tom has fixed this somewhat in 9.2,
+        nudging the planner to re-plan sometimes.
+
+        dumb expressions. a = a + 0, a = a + 1, et cetera.
+        the planner doesn't look into expressions.
+        non-dumb example: where my_func(a)
+
+    cost estimation errors
+        top problem: underestimating de-TOASTing cost.
+            (largely) because the planner doesn't consider where de-TOASTing
+            happens
+
+    conceptual errors
+        cross-data-type comparisons aren't always indexable
+        inlining the samet hing several time can love
+        …
+        … see slides
+
+    

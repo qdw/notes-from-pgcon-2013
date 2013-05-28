@@ -1,0 +1,77 @@
+Lightning talks (Thursday) (PGCon 2013)
+
+1. map of schemaverse planets using FLOSS cartodb. cool animation.
+   built on top of pg and PostGIS.
+
+2. table partioning, Keith Fisk, OmniTI.
+   * follow him on GitHub.
+   let's automate it.
+       his extension does time-based, serial-based.
+       automatically re-writes triggers for you as needed.
+       Python.
+       
+       supports both static and dynamic partitioning; dynamic costs performance
+
+       automated destruction of old data
+
+       replies on pg_jobmon
+
+3. computing in the post-NAND era:
+   malloc() is the wrong model.
+   this stuff is non-volatile! you can't re-malloc on reboot.
+
+   block devices are the wrong model.
+   
+   it's all hardware-specific. the vendor gives you a device driver
+   and you use its proprietary interface.
+   ugh.
+   we need a programming model.
+
+   POSIX is a good model
+       open()
+       mmap()
+       msync()
+
+       just map the NVDIMM into your address space.
+
+       cache issues
+
+4. Andrew Dunstan: 100% data compression: "Black Hole Foreign Data Wrapper"
+   you can use this as a skeleton for writing a *real* FDW.
+
+5. image search in pg. Alexander Korotkov NRNU MEPhl
+
+   create table pat as (
+       select id,
+              shuffle_pattern(pattern) as pattern,
+              pattern2signature(patterna as signature
+              from (
+                  select id,
+                  jpeg2pattern(data) as pattern
+                  from image
+              )
+   );
+
+6. Jonathan S. Katz, CTO, VantageBook (no website?!)
+   building NYC PUG: exponential. how?
+   
+7. pgpool-II
+
+8. zfs
+
+9. Josh Berkus: 5 ways to crash Postgres
+   I.   Don't apply updates. Extra credit: run an EOL'ed pg version.
+   II.  Run out of disk space. PANIC: could not write.
+        Fun variant: kill replica. Logs build up on master.
+        Both are full?
+        Failover happens. Failover fails.
+   III. Delete stuff in $PGDATA, e.g. pg_clog
+   IV.  Run out of memory.
+        Easy version: give pg too much memory.
+        Hard version: run on a cloud with a JVM and PHP and…
+        OOM killer.
+   V.   Bad hardware.
+        This one takes some budget.
+        Common variant: deploy hw to prod without testing.
+        Less common variant: run for years, accumulate a TB of data.
+

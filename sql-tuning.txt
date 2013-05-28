@@ -1,0 +1,76 @@
+SQL hints, tips, tricks and tuning, Susanne Ebrecht, 2nd Quadrant (PGCon 2013)
+@miraceesusanne
+
+Susanne
+    FLOSS since 1996
+    DB, l18n, i10n person
+    SQL Standard Committee member (ISO)
+
+    blue-blindness: it's a thing. BSOD is what prompted her switch
+    from Windows 95 to Debian!
+
+SQL
+    DDL
+    DML
+    DQL - data query   language (i.e., SELECT)
+    DCL - data control language (GRANT, REVOKE)
+    TCL - transaction control language (START TRANSACTION, -- BEGIN not std
+                                        SAVEPOINT,
+                                        COMMIT,
+                                        ROLLBACK)
+
+tuning for SELECTs is at odds with tuning for writes, because indexes.
+
+JOINs, in excess, kill performance
+    sure 3NF is a fine start, *but* you'll have to
+    denormalize eventually
+
+b-trees
+    pg fills pages to 90%, then starts a new page
+      to minimize the pain of having to deal with a full page
+      (lock, copy; move values around?
+
+        adustable
+        ALTER INDEX … SET FILLFACTOR=$percentage
+
+        CREATE INDEX CONCURRENTLY is another way to deal with index bloat
+          then DROP INDEX on the old one
+        ALTER INDEX … RENAMETO also available
+
+composite indexes
+    WHERE (a, b) = ('x', 'y') -- gets the index
+    WHERE a = 'x' AND b = 'y' -- doesn't get the index
+
+indexes are awesome for SELECT
+they suck for INSERT, of course, because each INSERT requires updating
+  the index.
+
+the optimizer does the same thing with each of these JOIN styles:
+    WHERE A.id = B.id
+    FROM A JOIN ON A.id = B.id
+    WHERE A.id IN (SELECT B.id FROM B)
+
+multiple JOINs: the optimizer doesn't do so well
+    it assumes the leftmost JOIN is the one to do first. :(
+
+CTEs win over correlated subselects
+
+EXPLAIN ANALYZE
+    [row] width is given in bytes
+
+cases
+    row estimates off: think about statistics
+    long time: think about logic, query redesign, indexes
+    lots of loops: think about logic, query redesign, CTEs
+
+    remember, each -> is taking another chunk of work_mem
+    so worst case is (work_mem * n_steps)
+
+stats
+    -- Change things manually
+    ALTER TABLE … SET STATISTIC
+
+partitioning
+    the optimizer is pretty good about taking advantage of this.
+
+

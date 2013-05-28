@@ -1,0 +1,95 @@
+PostgreSQL and Puppet, by Steve Singer (PGCon 2013)
+
+Steve
+    a slony maintainer
+    works for Afilias
+        a TLD registry operator
+        one step up the food chain from a registrar
+        uses pg to store ALL their DOMAINS
+
+puppet
+    open-source version - probably has all you want
+    commercial version  - includes support contract, GUI
+
+Declarative stuff
+class postgreql {
+    package {
+        'postgresql-server':
+        ensure => installed, provider => 'yum'
+    }
+    file {
+        '/tmp/hellow-world.txt':
+        content => 'Hello',
+        owner => 'postgres',
+        mode => 0644
+    }
+}
+
+Templates
+postgresql.conf.erb
+----
+shared_buffers = <%= shared_buffers %>
+$conf_tempalte = '/my/template.erb' # eval'ed in the context of the template
+
+/my/template.erb
+----
+file { "${pg_datadir}/postgresql.conf"
+    owner => "$pguser",
+    group => postgres,
+    mode => 0644,
+    require => Exec["${name}initdb]
+}
+
+Some params come from properties of the server itself
+    e.g., IP address
+    "facter" is a puppet component that collects facts about your
+    system and exposes them as "facts" (= variables you can query)
+
+    you can also write custom facts
+
+Hiera
+    puppet lib for looking up data using hierarchical queries
+    against YAML files
+    which are exports of your puppet data
+
+    $port = Hiera('postgres_port')
+
+    :hierarchy:
+    -domains/%{domain}/%{fqdn}/%{application}
+
+    postgresql.yaml
+    ----
+    postgres_port: 5432
+    postgres_db_list:   /* maps dbname to owner */
+        pgcon: ssinger
+        pgeu:  jwieck
+
+    Puppet provides a cron resource type:
+    cron { "backup_${name}" #
+        command => blah,
+        user => 'postgtres',
+        hour   => '0',
+        minute => '0',
+        ensure => 'present'
+    }
+
+And now for something completely different:
+Slonik
+(Slony's language)
+
+cluster name = my_cluster
+node 9181 admin conninifo = 'host=db1.on1 user=slony'
+
+So…
+They use a puppet template to generate Slonik files
+
+Hard things about puppet
+    removing classes for services that you're no longer using
+        without removing the service definitions
+        well, then puppet complains
+
+    managing passwords: where to put them?
+        first try: he wrote custom functions to look up on the puppet master
+        second: used a special Hiera backend that works on GPG-crypted YAML
+
+    

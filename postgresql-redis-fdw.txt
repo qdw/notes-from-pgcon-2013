@@ -1,0 +1,97 @@
+PostgreSQL and Redis [and Andrew's FDW], by Andrew Dunstan (PGCon 2013)
+gh/pg-redis-fdw/redis_fdw
+sponsor = http://www.ivc.com/
+    also sponsored extensible enums
+
+data types
+    scalars
+    sets
+    unordered sets
+    hashes
+    arrays
+
+redis.io/commands
+
+redis keys have a single global namespace. so ppl use lisp-like prefixes.
+    or they keep their keys in separate sets (one set per namespace).
+    this performs much better
+    (and hey, it's what the redis docs recommend).
+
+KEYS command: find keys by pattern
+    eg. KEYS web:* (dangerous, deprecated)
+
+hiredis - client library
+    redis fdw includes a pg wrapper for this
+    redis_connect()
+    redis_disconnect()
+    redis_command() - max 4 arguments
+    redis_command_argv() - takes an array, as name implies
+        VARIADIC text[] now
+        VARIADIC any[] later, maybe? Andrew is mulling the question.
+            Would be nice, since the client wouldn't have to cast everything.
+
+andrew et al.'s fdw
+    returns everything (except scalars) as ARRAY literals
+    hash tables
+        first column:  name
+        second column: TEXT[]
+
+        create goreign table web_session(
+            key text,
+            values text[]
+        )
+        SERVER localredis
+
+        …
+
+        see slides for remaining examples
+
+        you can create custom (aggregate) data types
+        and there's a function for making a new type in redis automatically
+        hey presto!
+
+        also does JSON:
+        CREATE EXTENSION json_object;
+            and vice-versa in 9.3
+
+        singleton key tables coming soon
+            possible retvals
+                single-field rows
+                hashes: rows of key-value pairs
+
+        writeable tables coming soon
+
+    redis_push_record()
+        construct an arbitrary record and send it to redis
+
+application at IVS
+    10K ads/s
+    using old hw
+    5 ms for pg to decide which ads are eligible
+    5 ms to filter to 1-5 best ads, using stats from redis (on Xen hosts!)
+                                                           with tons of RAM
+                                                           which redis takes
+    record ad, confirmation, clicks
+    24/7 w/ failover
+    api is in nodejs, running on nginx
+
+    business DB is denormalized
+        materialized into 2 tables
+
+    heavy use of pg custom data types
+        ad size = box
+        gin, gist, everythnig indexes all on the one table
+            give the planner options
+
+    partitioning for DW
+
+    $0.01/1000 impressions
+    $0.50/click to $1.00/click
+
+    fraud detection - big deal
+        medium– and long-term frequency fraud detection
+
+one thing: it's one redis connection per (pg fdw) function call
+it would be nice to cache a connection
+    even though persistent data is not part of the SQL-MED spec
+
